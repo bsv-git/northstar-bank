@@ -1,0 +1,115 @@
+name: northstar-bank
+
+x-java-common: &java-common
+  restart: unless-stopped
+  networks:
+    - demobank-net
+  environment:
+    SERVER_ADDRESS: 0.0.0.0
+    DB_HOST: postgres
+    DB_PORT: 5432
+    BANK_DB_USER: ${BANK_DB_USER:?Set BANK_DB_USER in .env.portable}
+    BANK_DB_PASSWORD: ${BANK_DB_PASSWORD:?Set BANK_DB_PASSWORD in .env.portable}
+    BANK_INTERNAL_SECRET: ${BANK_INTERNAL_SECRET:?Set BANK_INTERNAL_SECRET in .env.portable}
+    APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+    KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    IDENTITY_URL: http://identity-service:8081
+    LEDGER_URL: http://ledger-service:8082
+    PAYMENT_URL: http://payment-service:8083
+    NOTIFICATION_URL: http://notification-service:8084
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    container_name: northstar_bank_postgres
+    restart: unless-stopped
+    networks:
+      - demobank-net
+    environment:
+      POSTGRES_USER: ${BANK_DB_USER:?Set BANK_DB_USER in .env.portable}
+      POSTGRES_PASSWORD: ${BANK_DB_PASSWORD:?Set BANK_DB_PASSWORD in .env.portable}
+      POSTGRES_DB: postgres
+    volumes:
+      - northstar-postgres-data:/var/lib/postgresql/data
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+
+  kafka:
+    image: docker.io/apache/kafka:3.9.1
+    restart: unless-stopped
+    networks:
+      - demobank-net
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  identity-service:
+    <<: *java-common
+    build:
+      context: .
+      dockerfile: identity-service/Containerfile
+    expose:
+      - "8081"
+    depends_on:
+      - postgres
+
+  ledger-service:
+    <<: *java-common
+    build:
+      context: .
+      dockerfile: ledger-service/Containerfile
+    expose:
+      - "8082"
+    depends_on:
+      - postgres
+
+  payment-service:
+    <<: *java-common
+    build:
+      context: .
+      dockerfile: payment-service/Containerfile
+    expose:
+      - "8083"
+    depends_on:
+      - postgres
+
+  notification-service:
+    <<: *java-common
+    build:
+      context: .
+      dockerfile: notification-service/Containerfile
+    expose:
+      - "8084"
+    depends_on:
+      - postgres
+
+  gateway-service:
+    <<: *java-common
+    build:
+      context: .
+      dockerfile: gateway-service/Containerfile
+    ports:
+      - "${GATEWAY_BIND_ADDRESS:-127.0.0.1}:${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      - identity-service
+      - ledger-service
+      - payment-service
+      - notification-service
+      - kafka
+
+volumes:
+  northstar-postgres-data:
+
+networks:
+  demobank-net:
+    name: ${PODMAN_NETWORK:-demobank-net}
+    external: true

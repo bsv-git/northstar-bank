@@ -1,0 +1,2 @@
+CREATE TABLE payments(id uuid PRIMARY KEY, user_id varchar(40) NOT NULL, request_key varchar(80) NOT NULL, from_account varchar(24) NOT NULL, to_account varchar(24) NOT NULL, amount numeric(19,2) NOT NULL, description varchar(140) NOT NULL, status varchar(20) NOT NULL DEFAULT 'PENDING', error varchar(240), created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(user_id,request_key));
+CREATE INDEX payments_pending ON payments(created_at) WHERE status='PENDING';

@@ -1,0 +1,15 @@
+CREATE TABLE accounts(id varchar(24) PRIMARY KEY, owner_id varchar(40) NOT NULL, label varchar(80) NOT NULL, type varchar(20) NOT NULL, currency char(3) NOT NULL DEFAULT 'USD', balance numeric(19,2) NOT NULL CHECK(balance>=0), created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX account_owner ON accounts(owner_id);
+CREATE TABLE transfers(id uuid PRIMARY KEY, user_id varchar(40) NOT NULL, from_account varchar(24) REFERENCES accounts(id), to_account varchar(24) REFERENCES accounts(id), amount numeric(19,2) NOT NULL CHECK(amount>0), description varchar(140) NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE entries(id bigserial PRIMARY KEY, transfer_id uuid REFERENCES transfers(id), account_id varchar(24) REFERENCES accounts(id), amount numeric(19,2) NOT NULL, kind varchar(20) NOT NULL, description varchar(140) NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(transfer_id,account_id));
+CREATE INDEX entries_account ON entries(account_id,id DESC);
+CREATE TABLE beneficiaries(id uuid PRIMARY KEY, owner_id varchar(40) NOT NULL, account_id varchar(24) REFERENCES accounts(id), nickname varchar(80) NOT NULL, UNIQUE(owner_id,account_id));
+CREATE TABLE cards(id uuid PRIMARY KEY, account_id varchar(24) UNIQUE REFERENCES accounts(id), last_four char(4) NOT NULL, status varchar(20) NOT NULL DEFAULT 'ACTIVE');
+CREATE TABLE outbox(id uuid PRIMARY KEY, payload text NOT NULL, published boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX outbox_pending ON outbox(created_at) WHERE published=false;
+CREATE TABLE audit(id bigserial PRIMARY KEY, actor varchar(40) NOT NULL, action varchar(60) NOT NULL, detail varchar(200) NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+INSERT INTO accounts(id,owner_id,label,type,balance) VALUES ('NS10010001','maya','Everyday account','CHECKING',8240.50),('NS10010002','maya','Rainy day fund','SAVINGS',12500.00),('NS20010001','alex','Everyday account','CHECKING',5400.00),('NS20010002','alex','Travel fund','SAVINGS',2200.00),('NS00000000','system','Demo funding equity','EQUITY',0);
+INSERT INTO entries(account_id,amount,kind,description) SELECT id,balance,'OPENING','Demo opening balance' FROM accounts WHERE owner_id!='system';
+INSERT INTO entries(account_id,amount,kind,description) VALUES ('NS00000000',-28340.50,'OPENING','Demo funding offset');
+INSERT INTO cards(id,account_id,last_four) VALUES ('00000000-0000-0000-0000-000000000001','NS10010001','4821'),('00000000-0000-0000-0000-000000000002','NS20010001','7309');
+INSERT INTO beneficiaries VALUES ('00000000-0000-0000-0000-000000000011','maya','NS20010001','Alex Morgan'),('00000000-0000-0000-0000-000000000012','alex','NS10010001','Maya Thompson');

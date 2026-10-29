@@ -1,0 +1,19 @@
+FROM docker.io/library/maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /src
+COPY pom.xml .
+COPY common/pom.xml common/pom.xml
+COPY gateway-service/pom.xml gateway-service/pom.xml
+COPY identity-service/pom.xml identity-service/pom.xml
+COPY ledger-service/pom.xml ledger-service/pom.xml
+COPY payment-service/pom.xml payment-service/pom.xml
+COPY notification-service/pom.xml notification-service/pom.xml
+RUN mvn -pl gateway-service -am dependency:go-offline -DskipTests
+COPY common/src common/src
+COPY gateway-service/src gateway-service/src
+RUN mvn -pl gateway-service -am package -DskipTests
+
+FROM docker.io/library/eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=build /src/gateway-service/target/gateway-service-1.0.0.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java","-jar","/app/app.jar"]

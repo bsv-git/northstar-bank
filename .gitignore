@@ -1,0 +1,35 @@
+# Local tools and runtime artifacts
+tools/
+runtime/
+
+# Java and Maven build output
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+!.env.portable.example
+
+# Database files and local database state
+*.db
+*.sqlite
+*.sqlite3
+*.sqlitedb
+*.dump
+*.backup
+*.bak
+**/postgres-data/
+**/pgdata/
