@@ -32,6 +32,14 @@ public class GatewayController {
         mutation(request);
         return client.call(8081,"POST","/internal/users",null,body);
     }
+    @PostMapping("/api/users/verify") JsonNode verifyUser(HttpServletRequest request,@RequestBody JsonNode body){
+        mutation(request);
+        return client.call(8081,"POST","/internal/users/verify",null,body);
+    }
+    @PostMapping("/api/users/resend") JsonNode resendUser(HttpServletRequest request,@RequestBody JsonNode body){
+        mutation(request);
+        return client.call(8081,"POST","/internal/users/resend",null,body);
+    }
     @PostMapping("/api/v1/auth/signup") JsonNode signup(HttpServletRequest request,@RequestBody JsonNode body){
         mutation(request);
         return client.call(8081,"POST","/api/v1/auth/signup",null,body);

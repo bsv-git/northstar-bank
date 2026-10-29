@@ -41,7 +41,7 @@ public class GatewaySecurityConfig {
                         org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/index.html", "/app.js", "/styles.css", "/favicon.ico",
-                                "/api/login", "/api/users", "/api/v1/auth/signup", "/api/health",
+                                "/api/login", "/api/users", "/api/users/verify", "/api/users/resend", "/api/v1/auth/signup", "/api/health",
                                 "/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/csrf").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

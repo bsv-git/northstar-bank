@@ -12,6 +12,15 @@ x-java-common: &java-common
     BANK_DB_PASSWORD: ${BANK_DB_PASSWORD:?Set BANK_DB_PASSWORD in .env.portable}
     BANK_INTERNAL_SECRET: ${BANK_INTERNAL_SECRET:?Set BANK_INTERNAL_SECRET in .env.portable}
     APP_ALLOWED_ORIGINS: ${APP_ALLOWED_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+    EMAIL_MODE: ${EMAIL_MODE:-smtp}
+    EMAIL_FROM: ${EMAIL_FROM:-no-reply@northstar.local}
+    EMAIL_CAPTURE_DIR: ${EMAIL_CAPTURE_DIR:-/tmp/northstar-email-capture}
+    SMTP_HOST: ${SMTP_HOST:-host.containers.internal}
+    SMTP_PORT: ${SMTP_PORT:-25}
+    SMTP_USERNAME: ${SMTP_USERNAME:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_AUTH: ${SMTP_AUTH:-false}
+    SMTP_STARTTLS: ${SMTP_STARTTLS:-false}
     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
     IDENTITY_URL: http://identity-service:8081
     LEDGER_URL: http://ledger-service:8082

@@ -12,7 +12,7 @@ volume.
 ## Project roadmap and where to resume
 
 Open the [visual roadmap](docs/roadmap.html). Upcoming work is listed first; accomplishments
-and historical context are at the end. Updated **28 October 2026**.
+and historical context are at the end. Updated **29 October 2026**.
 
 **Current baseline:** portable PostgreSQL and all five application services are running.
 The latest check returned UP for gateway, identity, ledger and notifications; gateway
@@ -21,9 +21,10 @@ The four bank databases were migrated into `northstar_bank_postgres`, rollback d
 were preserved, and the old four bank databases were removed from `de_warehouse`.
 Shared warehouse databases and backups were preserved.
 
-**Next action:** audit the existing new-customer registration flow with an email outside
-the seeded dataset, then implement only the gaps for milestone 1. Registration code
-already exists; email verification and outbound email below are planned work.
+**Current signup status:** new customers remain pending until a six-digit email OTP is
+verified. WSL Postfix is configured as the local SMTP service on port 25; the application
+uses `host.containers.internal` to reach it from Podman. Local verification covered signup,
+activation, single-use OTP rejection, and case-insensitive duplicate-email rejection.
 
 ### Upcoming milestones — one small step at a time
 
@@ -31,15 +32,18 @@ The 50 seeded customers remain demo fixtures. They are not a limit on registrati
 The goal is reliable signup for actual people using the demo, with fictional funds;
 this plan does not establish production banking readiness.
 
-#### 1 — Next: Reliable new-customer signup
+#### 1 — Complete: Reliable new-customer signup
 
 Audit the existing POST /api/users flow before extending it. Allow a previously unknown email to create a CUSTOMER with a unique ID and hashed password; validate input and normalized email uniqueness, including concurrent duplicate submissions. Keep pre-seeded activation distinct. Provide clear success/error states and persist the user across restarts.
 
 **Done when:** A person not among the 50 demo users can register, sign in, and see only their own profile and empty account state; duplicate signup cannot create extra users or an admin.
 
-#### 2: Email ownership verification
+#### 2 — Complete locally: Email ownership verification
 
-Introduce pending/verified email state and expiring, single-use verification tokens. Plan resend throttling, expired/used-link feedback and retry-safe activation. Define access while verification is pending. Use a local email capture service first; choose an SMTP/provider configuration before external delivery.
+Pending signups use BCrypt password hashes and code digests, with ten-minute expiry, five
+attempts, sixty-second resend cooldown, and single-use activation. The browser provides
+verify and resend actions. Expired-code and automated rate-limit regression tests remain
+follow-up work.
 
 **Done when:** Signup, verification, expired link, resend and duplicate-click tests pass. Tokens and credentials are absent from logs; the UI accurately distinguishes pending and verified users.
 
@@ -74,7 +78,7 @@ in both documents. Move a milestone to accomplishments only after its checks pas
 ## Current architecture
 
 ```text
-Browser
+Browse
    |
    | http://<host-lan-ip>:8080
    v
@@ -91,7 +95,7 @@ Portable PostgreSQL container:
 northstar_bank_postgres
    |
    +--> bank_identity
-   +--> bank_ledger
+   +--> bank_ledge
    +--> bank_payment
    +--> bank_notification
 ```
@@ -199,9 +203,7 @@ The portable stack uses the same database login for all four logical databases.
 Create the shared network if needed and start the complete package:
 
 ```bash
-podman network exists demobank-net || podman network create demobank-net
-podman compose --env-file .env.portable \
-  -f compose.portable.yaml up --build -d
+./start-demo.sh
 ```
 
 The PostgreSQL image runs `deploy/postgres/init/00-create-databases.sql` on first
@@ -221,8 +223,7 @@ database creation, and schema migrations travel together.
 Stop the portable package without deleting its data:
 
 ```bash
-podman compose --env-file .env.portable \
-  -f compose.portable.yaml stop
+./stop-demo.sh
 ```
 
 ## Migrate from the existing database
@@ -266,13 +267,10 @@ Keep `.env.portable` local. It is excluded by `.gitignore` and must not be commi
 
 ## Start the demo
 
-The portable PostgreSQL container is the application database. The source `de_warehouse`
-container is needed only during migration and is not used by the running services.
-
-```bash
-podman compose --env-file .env.portable \
-  -f compose.portable.yaml up --build -d
-```
+The portable PostgreSQL container is the application database. The start helpe
+validates `.env.portable`, creates the external application network if needed,
+validates Compose without printing secrets, starts the standalone stack, and waits
+for the gateway health endpoint.
 
 Check the containers:
 
@@ -345,6 +343,8 @@ The browser uses the gateway rather than calling internal services directly:
 POST   /api/login
 POST   /api/logout
 POST   /api/users
+POST   /api/users/verify
+POST   /api/users/resend
 POST   /api/v1/auth/signup
 GET    /api/me
 GET    /api/accounts
@@ -359,6 +359,36 @@ GET    /api/health
 
 Internal service calls include the shared `X-Internal-Key` value and are not published
 to the host.
+
+## Local WSL SMTP and OTP delivery
+
+WSL Ubuntu uses Postfix on TCP port 25 and OpenDKIM for OTP messages. Postfix accepts
+SMTP only from `127.0.0.0/8`, the private Podman subnet `10.89.0.0/24`, and Podman's
+host gateway `10.255.255.254`; it rejects
+unauthorized relaying. The Compose application reaches the host with
+`SMTP_HOST=host.containers.internal`, without SMTP credentials or STARTTLS because the
+connection stays inside the local WSL/Podman boundary.
+
+Check the services:
+
+```bash
+sudo systemctl status postfix opendkim
+sudo postconf mynetworks smtpd_relay_restrictions smtpd_recipient_restrictions
+```
+
+The current sender is `no-reply@northstar.local`. This is suitable for local testing,
+but `.local` is not an Internet email domain. For real recipients, use a domain you
+control, update `EMAIL_FROM`, generate a DKIM key for that domain, and publish DNS:
+
+```text
+ SPF at @:        v=spf1 ip4:<public-mail-sender-ip> -all
+ DKIM at mail._domainkey: v=DKIM1; k=rsa; p=<contents of mail.txt>
+ DMARC at _dmarc: v=DMARC1; p=quarantine; rua=mailto:dmarc@<your-domain>
+```
+
+SPF and DKIM records cannot be validly published for `northstar.local` or a private
+LAN address. Do not expose port 25 to the LAN or Internet, and do not add broad networks
+to `mynetworks`; use a managed SMTP relay for production email.
 
 ## Logs and operations
 
@@ -383,17 +413,11 @@ podman compose --env-file .env.portable \
   -f compose.portable.yaml restart
 ```
 
-Stop application containers while retaining the portable database volume and backups:
+Stop application containers while retaining their containers, the portable database
+volume, and backups:
 
 ```bash
-podman compose --env-file .env.portable \
-  -f compose.portable.yaml down
-```
-
-Stop PostgreSQL separately only when it is no longer needed:
-
-```bash
-podman stop de_warehouse
+./stop-demo.sh
 ```
 
 Do not use `podman compose down --volumes` or delete the dated migration backup.
@@ -434,18 +458,18 @@ This is a local learning/demo environment, not a production banking system.
 
 ### Stop without removing containers
 
-Use `podman compose --env-file .env.portable -f compose.portable.yaml stop`
-to retain application containers.
-The current Compose file declares no persistent Kafka volume; removing the Kafka container
+Use `./stop-demo.sh` to retain application containers.
+The current Compose file declares no persistent Kafka volume; removing the Kafka containe
 can lose broker data in its writable layer. PostgreSQL is managed separately. Plan Kafka
 persistence before relying on broker data surviving container recreation.
 
-### Documentation update — 28 October 2026
+### Documentation update — 29 October 2026
 
 Added the visual roadmap, current blocker, milestones and handoff process. Preserved all
 original README content in the linked snapshot. Documented the portable PostgreSQL
 container, four-database migration, private rollback dumps, and the post-migration
-runtime. Credentials remain local and are not documented.
+runtime. Added WSL Postfix/OpenDKIM OTP delivery guidance, local relay restrictions, and
+real-domain SPF/DKIM/DMARC prerequisites. Credentials remain local and are not documented.
 
 
 ## Accomplishments and project history
@@ -455,13 +479,16 @@ Completed implementation is separated from checks that still need evidence.
 - **Foundation — September 2026:** Java 21 / Spring Boot microservices, shared module,
   browser UI, separate schemas, ledger, idempotent payments and Kafka outbox implemented.
 - **Feature expansion:** registration and pre-seeded activation code, 50 deterministic
-  demo customers, administrator role checks and saved UI theme implemented. New-user
-  reliability and email delivery are the next milestones, not completed features.
+  demo customers, administrator role checks, saved UI theme, pending customer signup,
+  single-use OTP verification, resend throttling and SMTP delivery implemented locally.
 - **WSL and Podman:** project migrated to WSL; service Containerfiles and Compose added.
 - **Portable database — 28 October 2026:** migration documented, new PostgreSQL container
   running and four private rollback dumps present. Gateway and all four internal service
   health endpoints independently returned UP. Full record/workflow verification and
   cleanup are not claimed complete by these health checks.
+- **Local transactional email — 29 October 2026:** WSL Postfix and OpenDKIM are active;
+  Postfix accepts only loopback, the private Podman subnet and its host gateway, and
+  rejects unauthorized relay. A signup OTP was delivered locally with a DKIM signature.
 - **Project continuity:** visual roadmap and README summary created; historical README
   preserved. Upcoming milestones now lead, and accomplishments appear last.
 

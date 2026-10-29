@@ -42,6 +42,8 @@ public class SessionAuthenticationFilter extends OncePerRequestFilter {
         return !path.startsWith("/api/")
                 || path.equals("/api/login")
                 || path.equals("/api/users")
+                || path.equals("/api/users/verify")
+                || path.equals("/api/users/resend")
                 || path.equals("/api/v1/auth/signup")
                 || path.equals("/api/csrf")
                 || path.equals("/api/health");
